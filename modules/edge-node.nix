@@ -7,6 +7,7 @@ in
 
   imports = [
     ./zedagent.nix
+    ./nim.nix
     ./controller-config.nix
     ./device-identity.nix
     ./controller-trust.nix
