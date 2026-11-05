@@ -509,10 +509,6 @@ in
       edge.succeed("systemctl start eve-zedbox.service")
       edge.wait_for_unit("eve-zedbox.service")
 
-      print("=== Starting zedagent ===")
-      edge.succeed("systemctl start eve-zedagent.service")
-      edge.wait_for_unit("eve-zedagent.service")
-
       print("=== Starting native NIM ===")
       edge.succeed("systemctl start eve-nim.service")
       edge.wait_for_unit("eve-nim.service")
@@ -694,6 +690,22 @@ in
 
       print("Native NIM completed DPC verification")
 
+      print("=== Verifying NIM works before zedagent starts ===")
+
+      code, _ = edge.execute(
+          "systemctl is-active --quiet eve-zedagent.service"
+      )
+
+      assert code != 0, (
+          "zedagent was already active before NIM verification"
+      )
+
+      print("NIM reached DPC_SUCCESS independently of zedagent")
+
+      print("=== Starting zedagent after NIM verification ===")
+
+      edge.succeed("systemctl start eve-zedagent.service")
+      edge.wait_for_unit("eve-zedagent.service")
 
       print("=== Running actual EVE Client ===")
 

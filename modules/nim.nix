@@ -71,15 +71,9 @@ in {
 
       wantedBy = ["multi-user.target"];
 
-      requires = [
-        "eve-zedbox.service"
-        "eve-zedagent.service"
-      ];
+      requires = ["eve-zedbox.service"];
 
-      after = [
-        "eve-zedbox.service"
-        "eve-zedagent.service"
-      ];
+      after = ["eve-zedbox.service"];
 
       preStart = ''
         echo "Waiting for zedbox to be ready..."
