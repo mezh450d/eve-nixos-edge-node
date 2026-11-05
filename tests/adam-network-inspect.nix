@@ -165,6 +165,7 @@ in
       services.eve-edge = {
         enable = true;
         nim.enable = true;
+        nim.dhcpDnsHook.enable = true;
         controllerAddress = "controller:3333";
       };
 
@@ -187,31 +188,6 @@ in
 
         # NIM manages /etc/resolv.conf itself.
           nohook resolv.conf
-      '';
-
-      # Forward DHCP-provided DNS information to native NIM.
-      environment.etc."dhcpcd.exit-hook".text = ''
-        case "$reason" in
-          BOUND|RENEW|REBIND|REBOOT|INFORM|STATIC)
-            if [ -n "$new_domain_name_servers" ]; then
-              mkdir -p /run/dhcpcd/resolv.conf
-
-              {
-                for server in $new_domain_name_servers; do
-                  printf 'nameserver %s\n' "$server"
-                done
-
-                if [ -n "$new_domain_search" ]; then
-                  printf 'search %s\n' "$new_domain_search"
-                fi
-              } > "/run/dhcpcd/resolv.conf/$interface.dhcp"
-            fi
-            ;;
-
-          EXPIRE|FAIL|RELEASE|STOP)
-            rm -f "/run/dhcpcd/resolv.conf/$interface.dhcp"
-            ;;
-        esac
       '';
 
       environment.systemPackages = [
@@ -262,6 +238,19 @@ in
       print("=== Checking NixOS Edge Node ===")
 
       edge.wait_for_unit("multi-user.target")
+
+      print("=== Checking Module-provided DHCP DNS hook ===")
+
+      edge.succeed(
+          "test -s /etc/dhcpcd.exit-hook"
+      )
+
+      edge.succeed(
+          "grep -Fq 'new_domain_name_servers' /etc/dhcpcd.exit-hook"
+      )
+
+      print("Module-provided DHCP DNS hook is present")
+
       edge.wait_for_unit("eve-device-identity.service")
       edge.wait_for_unit("eve-soft-serial.service")
 
