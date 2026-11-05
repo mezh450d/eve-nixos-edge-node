@@ -19,6 +19,20 @@ in {
     lib.mkEnableOption "native EVE Network Interface Manager";
 
   config = lib.mkIf (cfg.enable && cfg.nim.enable) {
+
+    systemd.services.eve-zedbox.path = with pkgs; [
+      dhcpcd
+      iptables
+      util-linux
+    ];
+
+
+    systemd.services.eve-zedbox.serviceConfig.BindReadOnlyPaths = [
+      "${pkgs.dhcpcd}/bin/dhcpcd:/sbin/dhcpcd"
+      "${pkgs.dnsmasq}/bin/dnsmasq:/usr/sbin/dnsmasq"
+    ];
+
+
     systemd.tmpfiles.rules = [
       "d /run/watchdog 0755 root root -"
       "d /run/watchdog/file 0755 root root -"
