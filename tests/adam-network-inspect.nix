@@ -166,6 +166,7 @@ in
         enable = true;
         nim.enable = true;
         nim.dhcpDnsHook.enable = true;
+        onboarding.enable = true;
         controllerAddress = "controller:3333";
       };
 
@@ -707,34 +708,30 @@ in
       edge.succeed("systemctl start eve-zedagent.service")
       edge.wait_for_unit("eve-zedagent.service")
 
-      print("=== Running actual EVE Client ===")
 
-      code, output = edge.execute(
-        "timeout 60s "
-        "/run/current-system/sw/bin/client "
-        "selfRegister getUuid 2>&1"
+      print("=== Running EVE Client through the NixOS onboarding module ===")
+
+      edge.succeed("systemctl start eve-onboarding.service")
+      edge.wait_for_unit("eve-onboarding.service")
+
+      edge.succeed(
+          "systemctl is-active --quiet eve-onboarding.service"
       )
 
-      print("Client exit code:", code)
-      print("Client output:")
-      print(output[-6000:])
+      edge.succeed("test -s /persist/status/uuid")
 
-      if code == 124:
-          raise AssertionError(
-              "EVE Client registration did not complete"
-          )
-      elif code == 0:
-          print("Client exited successfully")
+      edge.succeed(
+          "test -s /persist/status/zedclient/OnboardingStatus/global.json"
+      )
+
+      print("Module-managed EVE onboarding succeeded")
+
+      print("=== Onboarding service logs ===")
+      print(
           edge.succeed(
-              "test -s /persist/status/zedclient/OnboardingStatus/global.json"
+              "journalctl -u eve-onboarding.service --no-pager -n 60"
           )
-          print("OnboardingStatus was published")
-      else:
-          raise AssertionError(
-              "EVE Client exited unexpectedly with code " + str(code)
-          )
-
-      print("Client startup diagnostic completed")
+      )
 
       print("=== Inspecting NixOS Edge Network ===")
 
