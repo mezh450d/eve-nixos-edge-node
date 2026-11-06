@@ -498,6 +498,20 @@ in
 
       print("Adam root certificate provisioned successfully")
 
+      print("=== Signaling that onboarding credentials are ready ===")
+
+      edge.succeed(
+          "test -s /config/onboard.cert.pem "
+          "&& test -s /config/onboard.key.pem "
+          "&& test -s /config/root-certificate.pem"
+      )
+
+      edge.succeed(
+          "install -m 0600 /dev/null /config/onboarding.ready"
+      )
+
+      print("Onboarding credentials ready marker created")
+
       print("=== Starting native NIM after credential provisioning ===")
 
       edge.succeed(
@@ -709,9 +723,9 @@ in
       edge.wait_for_unit("eve-zedagent.service")
 
 
-      print("=== Running EVE Client through the NixOS onboarding module ===")
+      print("=== Waiting for automatic EVE onboarding ===")
 
-      edge.succeed("systemctl start eve-onboarding.service")
+      edge.wait_for_unit("eve-onboarding.path")
       edge.wait_for_unit("eve-onboarding.service")
 
       edge.succeed(

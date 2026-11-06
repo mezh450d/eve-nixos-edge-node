@@ -9,6 +9,15 @@ in {
   options.services.eve-edge.onboarding.enable =
     lib.mkEnableOption "native EVE client onboarding";
 
+  options.services.eve-edge.onboarding.readyFile = lib.mkOption {
+    type = lib.types.str;
+    default = "/config/onboarding.ready";
+    description = ''
+      Runtime marker created by the credential provider after
+      all required onboarding credentials have been installed.
+    '';
+  };
+
   config = lib.mkIf (cfg.enable && cfg.onboarding.enable) {
     assertions = [
       {
@@ -20,6 +29,17 @@ in {
         message = "EVE onboarding requires a controller address.";
       }
     ];
+
+    systemd.paths.eve-onboarding = {
+      description = "Watch for EVE Onboarding Credentials";
+
+      wantedBy = ["multi-user.target"];
+
+      pathConfig = {
+        PathExists = cfg.onboarding.readyFile;
+        Unit = "eve-onboarding.service";
+      };
+    };
 
     systemd.services.eve-onboarding = {
       description = "EVE Edge Node Initial Onboarding";
