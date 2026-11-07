@@ -167,6 +167,7 @@ in
         nim.enable = true;
         nim.dhcpDnsHook.enable = true;
         onboarding.enable = true;
+        nodeagent.enable = true;
         controllerAddress = "controller:3333";
       };
 
@@ -519,6 +520,22 @@ in
           "test -s /config/onboard.key.pem && "
           "test -s /config/root-certificate.pem"
       )
+
+      print("=== Checking native NodeAgent module integration ===")
+
+      edge.succeed(
+          "systemctl cat eve-nodeagent.service >/dev/null"
+      )
+
+      edge.succeed(
+          "test -x /run/current-system/sw/bin/nodeagent"
+      )
+
+      edge.succeed(
+          "! systemctl is-active --quiet eve-nodeagent.service"
+      )
+
+      print("Native NodeAgent unit is available but not started")
 
       print("=== Starting zedbox ===")
       edge.succeed("systemctl start eve-zedbox.service")

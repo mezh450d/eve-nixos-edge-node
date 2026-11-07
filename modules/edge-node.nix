@@ -9,6 +9,7 @@ in {
   imports = [
     ./zedagent.nix
     ./nim.nix
+    ./nodeagent.nix
     ./onboarding.nix
     ./controller-config.nix
     ./device-identity.nix
