@@ -10,9 +10,11 @@ in {
     ./zedagent.nix
     ./nim.nix
     ./nodeagent.nix
+    ./baseosmgr.nix
     ./onboarding.nix
     ./controller-config.nix
     ./device-identity.nix
+    ./tpmmgr.nix
     ./controller-trust.nix
     ./soft-serial.nix
   ];

@@ -19,6 +19,8 @@ in {
     lib.mkEnableOption "native EVE NodeAgent integration";
 
   config = lib.mkIf (cfg.enable && cfg.nodeagent.enable) {
+    # Agent execution happens inside the main zedbox process.
+    systemd.services.eve-zedbox.environment.EVE_NODEAGENT_BOOT_BACKEND = "nixos";
     environment.systemPackages = [
       nodeagentLauncher
     ];

@@ -168,6 +168,8 @@ in
         nim.dhcpDnsHook.enable = true;
         onboarding.enable = true;
         nodeagent.enable = true;
+        baseosmgr.enable = true;
+        tpmmgr.enable = true;
         controllerAddress = "controller:3333";
       };
 
@@ -202,6 +204,10 @@ in
     };
 
     testScript = ''
+      import json
+      import re
+      import uuid
+
       start_all()
 
       print("=== Starting real Adam Controller ===")
@@ -734,6 +740,31 @@ in
 
       print("NIM reached DPC_SUCCESS independently of zedagent")
 
+      print("=== Providing NixOS release metadata for native Attestation ===")
+
+      edge.succeed(
+          "nixos-version | sed 's/^/NixOS-/' > /run/eve-release"
+      )
+
+      edge.succeed("test -s /run/eve-release")
+
+      print(edge.succeed("cat /run/eve-release"))
+
+      print("=== Preparing native EVE software certificates ===")
+
+      edge.succeed("install -d -m 0700 /persist/certs")
+      edge.succeed("/run/current-system/sw/bin/tpmmgr createSoftCerts")
+
+      edge.succeed("test -s /persist/certs/ecdh.cert.pem")
+      edge.succeed("test -s /persist/certs/attest.cert.pem")
+
+      print("=== Starting native tpmmgr ===")
+
+      edge.succeed("systemctl start eve-tpmmgr.service")
+      edge.wait_for_unit("eve-tpmmgr.service")
+
+      print("Native tpmmgr startup requested successfully")
+
       print("=== Starting zedagent after NIM verification ===")
 
       edge.succeed("systemctl start eve-zedagent.service")
@@ -756,6 +787,360 @@ in
       )
 
       print("Module-managed EVE onboarding succeeded")
+
+      print("=== Starting native NodeAgent on NixOS ===")
+
+      edge.succeed("systemctl start eve-nodeagent.service")
+
+      edge.wait_for_unit("eve-nodeagent.service")
+
+      print("=== Waiting for native NodeAgentStatus ===")
+
+      edge.wait_until_succeeds(
+          "test -s /run/nodeagent/NodeAgentStatus/nodeagent.json",
+          timeout=45,
+      )
+
+      print("Native NodeAgentStatus was published")
+
+      print(
+          edge.succeed(
+              "cat /run/nodeagent/NodeAgentStatus/nodeagent.json"
+          )
+      )
+
+      print("=== Verifying native zedagent received NodeAgentStatus ===")
+
+      edge.wait_until_succeeds(
+          "journalctl -u eve-zedbox --no-pager -o cat "
+          "| grep -F '\"source\":\"zedagent\"' "
+          "| grep -F '\"msg\":\"Nodeagent status create\"'",
+          timeout=30,
+      )
+
+      print("Native zedagent consumed NodeAgentStatus successfully")
+
+      print("=== Checking native baseosmgr integration ===")
+
+      edge.succeed(
+          "systemctl cat eve-baseosmgr.service >/dev/null"
+      )
+
+      edge.succeed(
+          "test -x /run/current-system/sw/bin/baseosmgr"
+      )
+
+      edge.succeed(
+          "! systemctl is-active --quiet eve-baseosmgr.service"
+      )
+
+      print("=== Starting native baseosmgr ===")
+
+      edge.succeed("systemctl start eve-baseosmgr.service")
+      edge.wait_for_unit("eve-baseosmgr.service")
+
+      print("=== Waiting for native ZbootStatus publication ===")
+
+      edge.wait_until_succeeds(
+          "test -S /run/baseosmgr/ZbootStatus.sock",
+          timeout=30,
+      )
+
+      print("Native baseosmgr ZbootStatus publication is available")
+
+      print("=== Waiting for native tpmmgr AttestQuote ===")
+
+      edge.wait_until_succeeds(
+          "journalctl -u eve-zedbox --no-pager -o cat "
+          "| grep -F '\"source\":\"tpmmgr\"' "
+          "| grep -F '\"msg\":\"Attest quote create\"'",
+          timeout=90,
+      )
+
+      print("SUCCESS: Native tpmmgr published AttestQuote")
+
+      print("=== Inspecting baseosmgr and zedagent initialization ===")
+
+      code, output = edge.execute(
+          "journalctl -u eve-zedbox --no-pager -o cat "
+          "| grep -Ei 'baseosmgr|Zboot reported restarted|"
+          "configTimerTask|getLatestConfig' "
+          "| tail -n 60"
+      )
+
+      print(output)
+
+      print("=== Inspecting native Adam device configuration CLI ===")
+
+      for command in [
+          "docker exec adam adam admin device config --help",
+          "docker exec adam adam admin device config get --help",
+          "docker exec adam adam admin device config set --help",
+          "docker exec adam adam admin device list --help",
+      ]:
+          code, output = controller.execute(command + " 2>&1")
+          print(f"Command: {command}, exit code: {code}")
+          print(output[:6000])
+
+      print("=== Verifying native Adam Config Fetch ===")
+
+      print("=== Checking running Controller containers ===")
+
+      code, output = controller.execute(
+          "docker ps --format '{{.ID}} {{.Names}}'"
+      )
+      print(output)
+
+      controller.wait_until_succeeds(
+          "docker ps -q "
+          "| xargs -r -n1 docker logs --tail 1000 2>&1 "
+          "| grep -E 'requested /api/v2/edgedevice/id/[0-9a-f-]+/config'",
+          timeout=45,
+      )
+
+      print("Native zedagent successfully requested config from Adam")
+
+      code, output = controller.execute(
+          "docker ps -q "
+          "| xargs -r -n1 docker logs --tail 1000 2>&1 "
+          "| grep -E 'requested /api/v2/edgedevice/id/.*/config|"
+          "config not found for device' "
+          "| tail -n 15"
+      )
+
+      print(output)
+
+      print("=== Checking Adam management API connectivity ===")
+
+      # Use the same endpoint and TLS certificate as the working onboarding CLI.
+      adam_cli = (
+          "docker exec adam /bin/adam admin "
+          "--server https://127.0.0.1:3333 "
+          "--server-ca /adam/run/adam/server.pem"
+      )
+
+      status, output = controller.execute(
+          f"{adam_cli} device list 2>&1"
+      )
+
+      print(output)
+
+      assert status == 0, (
+          "Adam management CLI could not connect:\n" + output
+      )
+
+      print("Adam management API is reachable")
+
+      print("=== Identifying dynamically onboarded device ===")
+
+      adam_logs = controller.succeed("docker logs adam 2>&1")
+
+      device_uuids = sorted(
+          set(
+              re.findall(
+                  r"/api/v2/edgedevice/id/"
+                  r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})"
+                  r"/config",
+                  adam_logs,
+              )
+          )
+      )
+
+      assert len(device_uuids) == 1, (
+          f"Expected one onboarded test device, found: {device_uuids}"
+      )
+
+      device_uuid = device_uuids[0]
+
+      print("Onboarded device UUID:", device_uuid)
+
+      print("=== Preparing minimal native EdgeDevConfig ===")
+
+      app_uuid = str(uuid.uuid4())
+      app_name = "nixos-zedagent-app-test"
+
+      config_data = {
+          "id": {
+              "uuid": device_uuid,
+              "version": "1",
+          },
+          "apps": [
+              {
+                  "uuidandversion": {
+                      "uuid": app_uuid,
+                      "version": "1",
+                  },
+                  "displayname": app_name,
+                  "activate": False,
+                  "fixedresources": {
+                      "vcpus": 1,
+                      "maxcpus": 1,
+                      "memory": 262144,
+                      "maxmem": 262144,
+                  },
+              }
+          ],
+      }
+
+      config_json = json.dumps(config_data)
+
+      print(config_json)
+
+      print("=== Uploading EdgeDevConfig through native Adam CLI ===")
+
+      set_command = (
+          "printf '%s' "
+          + shlex.quote(config_json)
+          + " | "
+          + adam_cli.replace(
+              "docker exec adam ",
+              "docker exec -i adam ",
+              1,
+          )
+          + " device config set "
+          + "--uuid "
+          + shlex.quote(device_uuid)
+          + " --config-path -"
+      )
+
+      code, output = controller.execute(set_command + " 2>&1")
+
+      print("Set config exit code:", code)
+      print(output)
+
+      assert code == 0, "Adam rejected the device configuration"
+
+      print("=== Reading configuration back from Adam ===")
+
+      get_command = (
+          adam_cli
+          + " device config get --uuid "
+          + shlex.quote(device_uuid)
+      )
+
+      code, output = controller.execute(get_command + " 2>&1")
+
+      print(output)
+
+      assert code == 0, "Could not read configuration back from Adam"
+
+      stored_config = json.loads(
+          next(line for line in output.splitlines() if line.lstrip().startswith("{"))
+      )
+
+      assert stored_config["id"]["uuid"] == device_uuid, (
+          "Adam returned a configuration for the wrong device"
+      )
+
+      print("Native Adam configuration provisioning succeeded")
+
+      print("=== Waiting for native AppInstanceConfig publication ===")
+
+      app_config_path = (
+          f"/run/zedagent/AppInstanceConfig/{app_uuid}.json"
+      )
+
+      edge.wait_until_succeeds(
+          f"test -s {app_config_path}",
+          timeout=180,
+      )
+
+      print("=== Native AppInstanceConfig was published ===")
+
+      published_config = edge.succeed(
+          f"cat {app_config_path}"
+      )
+
+      print(published_config)
+
+      app_config = json.loads(published_config)
+
+      assert app_config["UUIDandVersion"]["UUID"].lower() == app_uuid
+      assert app_config["DisplayName"] == app_name
+      assert app_config["Activate"] is False
+      assert not app_config.get("Errors"), app_config.get("Errors")
+
+      print("SUCCESS: Native zedagent published AppInstanceConfig")
+
+      print("=== Diagnosing zedagent after onboarding ===")
+
+      import time
+
+      time.sleep(45)
+
+      print("=== Inspecting received device configuration ===")
+
+      code, output = edge.execute(
+          "ls -l /persist/checkpoint/lastconfig "
+          "/persist/checkpoint/lastconfig.bak 2>&1"
+      )
+
+      print(output)
+
+      code, output = edge.execute(
+          "journalctl -u eve-zedbox --no-pager -o cat "
+          "| grep -Ei "
+          "'ConfigGetStatus|parseConfig|config received|"
+          "config processing|publishAppInstanceConfig' "
+          "| tail -n 50"
+      )
+
+      print(output)
+
+      print("=== Verifying zedbox remains running ===")
+
+      edge.succeed(
+          "systemctl is-active --quiet eve-zedbox.service"
+      )
+
+      print("Native EVE agents are still running")
+
+      print("=== Checking required Pillar publications ===")
+
+      required_status = [
+          "/persist/status/zedclient/OnboardingStatus/global.json",
+          "/run/nim/DeviceNetworkStatus/global.json",
+          "/run/nodeagent/NodeAgentStatus/nodeagent.json",
+      ]
+
+      for path in required_status:
+          code, _ = edge.execute("test -s " + path)
+          result = "present" if code == 0 else "missing"
+          print(f"{path}: {result}")
+
+      print("=== Checking native baseosmgr ZbootStatus publication ===")
+
+      code, output = edge.execute(
+          "if test -d /run/baseosmgr/ZbootStatus; then "
+          "find /run/baseosmgr/ZbootStatus "
+          "-maxdepth 1 -type f -name '*.json' -print; "
+          "else echo 'baseosmgr ZbootStatus is not available'; fi"
+      )
+
+      print(output)
+
+      print("=== zedagent initialization and config logs ===")
+
+      code, output = edge.execute(
+          "journalctl -u eve-zedbox --no-pager -o cat "
+          "| grep -Ei "
+          "'NodeAgentStatus|ZbootStatus|configTimerTask|"
+          "getLatestConfig|requestConfigByURL|"
+          "lookupControllerCert|PublishDeviceInfo' "
+          "| tail -n 70"
+      )
+
+      print(output)
+
+      print("=== Adam configuration requests ===")
+
+      code, output = controller.execute(
+          "docker logs adam 2>&1 "
+          "| grep -E '/api/v2/edgedevice/id/[0-9a-f-]+/config' "
+          "| tail -n 20"
+      )
+
+      print(output if output.strip() else "No config requests found in Adam logs")
 
       print("=== Onboarding service logs ===")
       print(
