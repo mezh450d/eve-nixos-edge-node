@@ -155,9 +155,6 @@ in
         ../modules/edge-node.nix
       ];
 
-      # Test-only: start Pillar after onboarding credentials are ready.
-      systemd.services.eve-zedbox.wantedBy = lib.mkForce [];
-
       systemd.services.eve-nim.unitConfig.ConditionPathExists = "/config/onboard.cert.pem";
 
       services.eve-edge = {
@@ -542,9 +539,10 @@ in
 
       print("Native NodeAgent unit is available but not started")
 
-      print("=== Starting zedbox ===")
-      edge.succeed("systemctl start eve-zedbox.service")
+      print("=== Verifying module-managed zedbox startup ===")
       edge.wait_for_unit("eve-zedbox.service")
+      edge.succeed("systemctl is-active --quiet eve-zedbox.service")
+      print("Native zedbox started through systemd dependencies")
 
       print("=== Verifying module-managed NIM startup ===")
       edge.wait_for_unit("eve-nim.service")

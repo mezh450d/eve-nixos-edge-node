@@ -34,7 +34,10 @@ in {
     systemd.services.eve-zedbox = {
       description = "EVE Pillar zedbox";
 
-      wantedBy = ["multi-user.target"];
+      wantedBy =
+        if cfg.onboarding.enable
+        then []
+        else ["multi-user.target"];
 
       path = with pkgs; [
         dmidecode
