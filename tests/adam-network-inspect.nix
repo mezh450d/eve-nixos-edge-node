@@ -533,11 +533,7 @@ in
           "test -x /run/current-system/sw/bin/nodeagent"
       )
 
-      edge.succeed(
-          "! systemctl is-active --quiet eve-nodeagent.service"
-      )
-
-      print("Native NodeAgent unit is available but not started")
+      print("Native NodeAgent unit is available")
 
       print("=== Verifying module-managed zedbox startup ===")
       edge.wait_for_unit("eve-zedbox.service")
@@ -786,11 +782,15 @@ in
 
       print("Module-managed EVE onboarding succeeded")
 
-      print("=== Starting native NodeAgent on NixOS ===")
-
-      edge.succeed("systemctl start eve-nodeagent.service")
+      print("=== Verifying module-managed NodeAgent startup ===")
 
       edge.wait_for_unit("eve-nodeagent.service")
+
+      edge.succeed(
+          "systemctl is-active --quiet eve-nodeagent.service"
+      )
+
+      print("Native NodeAgent started through systemd dependencies")
 
       print("=== Waiting for native NodeAgentStatus ===")
 

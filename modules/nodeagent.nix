@@ -28,10 +28,16 @@ in {
     systemd.services.eve-nodeagent = {
       description = "Start native EVE NodeAgent";
 
-      # No wantedBy yet: boot-state compatibility must be
-      # verified before automatically starting nodeagent.
+      # Start automatically after zedagent when onboarding is enabled.
+      wantedBy = lib.optionals cfg.onboarding.enable [
+        "eve-zedagent.service"
+      ];
 
-      requires = ["eve-zedbox.service"];
+      requires =
+        ["eve-zedbox.service"]
+        ++ lib.optionals cfg.onboarding.enable [
+          "eve-zedagent.service"
+        ];
 
       after = [
         "eve-zedbox.service"
