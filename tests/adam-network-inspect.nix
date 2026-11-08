@@ -170,6 +170,7 @@ in
         nodeagent.enable = true;
         baseosmgr.enable = true;
         tpmmgr.enable = true;
+        tpmmgr.softwareCertificates.enable = true;
         controllerAddress = "controller:3333";
       };
 
@@ -740,30 +741,31 @@ in
 
       print("NIM reached DPC_SUCCESS independently of zedagent")
 
-      print("=== Providing NixOS release metadata for native Attestation ===")
-
-      edge.succeed(
-          "nixos-version | sed 's/^/NixOS-/' > /run/eve-release"
-      )
+      print("=== Verifying release metadata provided by NixOS Module ===")
 
       edge.succeed("test -s /run/eve-release")
+      edge.succeed("grep -q '^NixOS-' /run/eve-release")
 
       print(edge.succeed("cat /run/eve-release"))
 
-      print("=== Preparing native EVE software certificates ===")
-
-      edge.succeed("install -d -m 0700 /persist/certs")
-      edge.succeed("/run/current-system/sw/bin/tpmmgr createSoftCerts")
-
-      edge.succeed("test -s /persist/certs/ecdh.cert.pem")
-      edge.succeed("test -s /persist/certs/attest.cert.pem")
-
-      print("=== Starting native tpmmgr ===")
+      print("=== Starting native tpmmgr with module-managed certificates ===")
 
       edge.succeed("systemctl start eve-tpmmgr.service")
+
+      edge.wait_for_unit("eve-soft-certs.service")
       edge.wait_for_unit("eve-tpmmgr.service")
 
-      print("Native tpmmgr startup requested successfully")
+      print("=== Verifying module-managed software certificates ===")
+
+      edge.succeed("systemctl is-active --quiet eve-soft-certs.service")
+
+      edge.succeed("test -s /persist/certs/ecdh.cert.pem")
+      edge.succeed("test -s /persist/certs/ecdh.key.pem")
+
+      edge.succeed("test -s /persist/certs/attest.cert.pem")
+      edge.succeed("test -s /persist/certs/attest.key.pem")
+
+      print("Native software certificates and tpmmgr verified")
 
       print("=== Starting zedagent after NIM verification ===")
 
