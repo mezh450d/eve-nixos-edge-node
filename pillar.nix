@@ -36,6 +36,18 @@ in
         --replace-fail \
         '&realZboot{log: logArg}' \
         'selectBaseosmgrZboot(&realZboot{log: logArg})'
+
+      # Reject EVE A/B BaseOS updates when using the NixOS backend.
+      # Let native BaseOSMgr report the validation error through BaseOsStatus.
+      substituteInPlace cmd/baseosmgr/handlebaseos.go \
+        --replace-fail \
+        'func validateBaseOsConfig(_ *baseOsMgrContext, config types.BaseOsConfig) error {' \
+        'func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) error {
+          if _, isNixOS := ctx.zboot.(nixosBaseosmgrZboot); isNixOS {
+            return errNixOSABUnsupported
+          }'
+
+      gofmt -w cmd/baseosmgr/handlebaseos.go
     '';
 
     vendorHash = null;
