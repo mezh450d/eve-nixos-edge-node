@@ -157,7 +157,6 @@ in
 
       # Test-only: start Pillar after onboarding credentials are ready.
       systemd.services.eve-zedbox.wantedBy = lib.mkForce [];
-      systemd.services.eve-zedagent.wantedBy = lib.mkForce [];
       systemd.services.eve-nim.wantedBy = lib.mkForce [];
 
       systemd.services.eve-nim.unitConfig.ConditionPathExists = "/config/onboard.cert.pem";
@@ -729,17 +728,14 @@ in
 
       print("Native NIM completed DPC verification")
 
-      print("=== Verifying NIM works before zedagent starts ===")
+      print("=== Verifying NIM readiness with automatic agent startup ===")
 
-      code, _ = edge.execute(
-          "systemctl is-active --quiet eve-zedagent.service"
+      edge.succeed(
+          "jq -e '.State == 3' "
+          "/run/nim/DeviceNetworkStatus/global.json >/dev/null"
       )
 
-      assert code != 0, (
-          "zedagent was already active before NIM verification"
-      )
-
-      print("NIM reached DPC_SUCCESS independently of zedagent")
+      print("NIM reached DPC_SUCCESS with module-managed agent startup")
 
       print("=== Verifying release metadata provided by NixOS Module ===")
 
@@ -748,12 +744,12 @@ in
 
       print(edge.succeed("cat /run/eve-release"))
 
-      print("=== Starting native tpmmgr with module-managed certificates ===")
-
-      edge.succeed("systemctl start eve-tpmmgr.service")
+      print("=== Verifying module-managed tpmmgr startup ===")
 
       edge.wait_for_unit("eve-soft-certs.service")
       edge.wait_for_unit("eve-tpmmgr.service")
+
+      edge.succeed("systemctl is-active --quiet eve-tpmmgr.service")
 
       print("=== Verifying module-managed software certificates ===")
 
@@ -767,10 +763,13 @@ in
 
       print("Native software certificates and tpmmgr verified")
 
-      print("=== Starting zedagent after NIM verification ===")
+      print("=== Verifying module-managed zedagent startup ===")
 
-      edge.succeed("systemctl start eve-zedagent.service")
       edge.wait_for_unit("eve-zedagent.service")
+
+      edge.succeed("systemctl is-active --quiet eve-zedagent.service")
+
+      print("Native zedagent started through systemd dependencies")
 
 
       print("=== Waiting for automatic EVE onboarding ===")

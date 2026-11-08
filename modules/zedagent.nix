@@ -1,6 +1,9 @@
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.eve-edge;
 
   pillar = import ../pillar.nix {
@@ -15,11 +18,8 @@ let
     ln -s ${pillar}/bin/zedbox $out/bin/client
     ln -s ${pillar}/bin/zedbox $out/bin/tpmmgr
   '';
-
-in
-{
+in {
   config = lib.mkIf cfg.enable {
-
     environment.systemPackages = [
       agentLaunchers
     ];
@@ -34,7 +34,7 @@ in
     systemd.services.eve-zedbox = {
       description = "EVE Pillar zedbox";
 
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
 
       path = with pkgs; [
         dmidecode
@@ -48,36 +48,54 @@ in
     };
 
     # Request zedagent startup
-    
-systemd.services.eve-zedagent = {
-  description = "Start EVE zedagent";
 
-  wantedBy = [ "multi-user.target" ];
+    systemd.services.eve-zedagent = {
+      description = "Start EVE zedagent";
 
-  requires = [ "eve-zedbox.service" ];
-  after = [ "eve-zedbox.service" ];
+      wantedBy =
+        if cfg.onboarding.enable
+        then ["eve-onboarding.service"]
+        else ["multi-user.target"];
 
-  preStart = ''
-    echo "Waiting for zedbox to be ready..."
+      requires =
+        ["eve-zedbox.service"]
+        ++ lib.optionals cfg.onboarding.enable [
+          "eve-onboarding.service"
+        ]
+        ++ lib.optionals cfg.tpmmgr.enable [
+          "eve-tpmmgr.service"
+        ];
 
-    for i in $(${pkgs.coreutils}/bin/seq 1 50); do
-      if [ -S /run/zedbox/ServiceInitStatus.sock ]; then
-        echo "zedbox socket is ready"
-        exit 0
-      fi
+      after =
+        ["eve-zedbox.service"]
+        ++ lib.optionals cfg.onboarding.enable [
+          "eve-onboarding.service"
+        ]
+        ++ lib.optionals cfg.tpmmgr.enable [
+          "eve-tpmmgr.service"
+        ];
 
-      ${pkgs.coreutils}/bin/sleep 0.2
-    done
+      preStart = ''
+        echo "Waiting for zedbox to be ready..."
 
-    echo "ERROR: zedbox socket was not ready" >&2
-    exit 1
-  '';
+        for i in $(${pkgs.coreutils}/bin/seq 1 50); do
+          if [ -S /run/zedbox/ServiceInitStatus.sock ]; then
+            echo "zedbox socket is ready"
+            exit 0
+          fi
 
-  serviceConfig = {
-    Type = "oneshot";
-    RemainAfterExit = true;
-    ExecStart = "${agentLaunchers}/bin/zedagent";
-  };
-};
+          ${pkgs.coreutils}/bin/sleep 0.2
+        done
+
+        echo "ERROR: zedbox socket was not ready" >&2
+        exit 1
+      '';
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${agentLaunchers}/bin/zedagent";
+      };
+    };
   };
 }
