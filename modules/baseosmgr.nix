@@ -29,11 +29,26 @@ in {
     systemd.services.eve-baseosmgr = {
       description = "Start native EVE BaseOS Manager";
 
-      # Intentionally no wantedBy yet.
-      # Started explicitly by the integration test.
+      # Start automatically after onboarding.
+      wantedBy = lib.optionals cfg.onboarding.enable [
+        "eve-onboarding.service"
+      ];
 
-      requires = ["eve-zedbox.service"];
-      after = ["eve-zedbox.service"];
+      requires =
+        ["eve-zedbox.service"]
+        ++ lib.optionals cfg.onboarding.enable [
+          "eve-onboarding.service"
+        ];
+
+      after =
+        ["eve-zedbox.service"]
+        ++ lib.optionals cfg.onboarding.enable [
+          "eve-onboarding.service"
+          "eve-zedagent.service"
+        ]
+        ++ lib.optionals cfg.nodeagent.enable [
+          "eve-nodeagent.service"
+        ];
 
       preStart = ''
         for i in $(${pkgs.coreutils}/bin/seq 1 50); do

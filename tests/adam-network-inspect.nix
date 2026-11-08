@@ -828,14 +828,16 @@ in
           "test -x /run/current-system/sw/bin/baseosmgr"
       )
 
+
+      print("=== Verifying module-managed BaseOSMgr startup ===")
+
+      edge.wait_for_unit("eve-baseosmgr.service")
+
       edge.succeed(
-          "! systemctl is-active --quiet eve-baseosmgr.service"
+          "systemctl is-active --quiet eve-baseosmgr.service"
       )
 
-      print("=== Starting native baseosmgr ===")
-
-      edge.succeed("systemctl start eve-baseosmgr.service")
-      edge.wait_for_unit("eve-baseosmgr.service")
+      print("Native BaseOSMgr started through systemd dependencies")
 
       print("=== Waiting for native ZbootStatus publication ===")
 
