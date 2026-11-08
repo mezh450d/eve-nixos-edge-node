@@ -157,7 +157,6 @@ in
 
       # Test-only: start Pillar after onboarding credentials are ready.
       systemd.services.eve-zedbox.wantedBy = lib.mkForce [];
-      systemd.services.eve-nim.wantedBy = lib.mkForce [];
 
       systemd.services.eve-nim.unitConfig.ConditionPathExists = "/config/onboard.cert.pem";
 
@@ -547,9 +546,9 @@ in
       edge.succeed("systemctl start eve-zedbox.service")
       edge.wait_for_unit("eve-zedbox.service")
 
-      print("=== Starting native NIM ===")
-      edge.succeed("systemctl start eve-nim.service")
+      print("=== Verifying module-managed NIM startup ===")
       edge.wait_for_unit("eve-nim.service")
+      edge.succeed("systemctl is-active --quiet eve-nim.service")
 
       edge.wait_until_succeeds(
           "test -s /run/nim/DeviceNetworkStatus/global.json",

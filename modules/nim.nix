@@ -69,7 +69,10 @@ in {
     systemd.services.eve-nim = {
       description = "Start native EVE NIM";
 
-      wantedBy = ["multi-user.target"];
+      wantedBy =
+        if cfg.onboarding.enable
+        then []
+        else ["multi-user.target"];
 
       requires = ["eve-zedbox.service"];
 
